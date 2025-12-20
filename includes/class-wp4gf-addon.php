@@ -19,8 +19,7 @@ class WP4GF_Addon extends GFAddOn {
     private static $_instance = null;
 
     /**
-     * Singleton instance of the class.
-     * Cites:
+     * Singleton instance.
      */
     public static function get_instance() {
         if ( self::$_instance == null ) {
@@ -31,24 +30,21 @@ class WP4GF_Addon extends GFAddOn {
 
     /**
      * Initialize frontend hooks and AJAX listeners.
-     * Cites:
      */
     public function init() {
         parent::init();
 
-        // Register custom Merge Tag
+        // Custom Merge Tag Hooks
         add_filter( 'gform_custom_merge_tags', array( $this, 'wp4gf_add_custom_merge_tags' ), 10, 4 );
         add_filter( 'gform_replace_merge_tags', array( $this, 'wp4gf_replace_download_link' ), 10, 7 );
 
-        // AJAX Handlers for secure download
+        // AJAX Download Handler
         add_action( 'wp_ajax_wp4gf_download_pass', array( $this, 'wp4gf_handle_pass_download' ) );
         add_action( 'wp_ajax_nopriv_wp4gf_download_pass', array( $this, 'wp4gf_handle_pass_download' ) );
     }
 
     /**
-     * Define Global Plugin Settings (Apple Credentials).
-     * Accessible via Forms > Settings > Wallet Pass.
-     * Cites:
+     * Global Plugin Settings (Apple Credentials).
      */
     public function plugin_settings_fields() {
         return array(
@@ -74,7 +70,6 @@ class WP4GF_Addon extends GFAddOn {
                         'label'    => esc_html__( 'Absolute Server Path to .p12', 'wallet-pass-generator-for-gravity-forms' ),
                         'type'     => 'text',
                         'class'    => 'large',
-                        'description' => esc_html__( 'Secure location (e.g., /home/user/certs/cert.p12).', 'wallet-pass-generator-for-gravity-forms' ),
                     ),
                     array(
                         'name'     => 'wp4gf_p12_password',
@@ -88,9 +83,7 @@ class WP4GF_Addon extends GFAddOn {
     }
 
     /**
-     * Define Form Settings (Per-Form Activation).
-     * Accessible via Form Settings > Wallet Pass.
-     * Cites:
+     * Form-Specific Settings with Field Mapping.
      */
     public function form_settings_fields( $form ) {
         return array(
@@ -99,7 +92,7 @@ class WP4GF_Addon extends GFAddOn {
                 'fields' => array(
                     array(
                         'name'    => 'wp4gf_enabled',
-                        'label'   => esc_html__( 'Enable Wallet Pass for this form', 'wallet-pass-generator-for-gravity-forms' ),
+                        'label'   => esc_html__( 'Enable Wallet Pass', 'wallet-pass-generator-for-gravity-forms' ),
                         'type'    => 'toggle',
                     ),
                     array(
@@ -111,26 +104,32 @@ class WP4GF_Addon extends GFAddOn {
                             array( 'label' => 'Generic', 'value' => 'generic' ),
                         ),
                     ),
+                    // Dynamic Field Mapping
+                    array(
+                        'name'      => 'wp4gf_field_map',
+                        'label'     => esc_html__( 'Field Mapping', 'wallet-pass-generator-for-gravity-forms' ),
+                        'type'      => 'field_map',
+                        'field_map' => array(
+                            array( 'name' => 'primary_value',   'label' => 'Guest Name', 'required' => true ),
+                            array( 'name' => 'secondary_value', 'label' => 'Check-in Date', 'required' => false ),
+                            array( 'name' => 'barcode_value',   'label' => 'QR Code Data', 'required' => true ),
+                        ),
+                    ),
                 ),
             ),
         );
     }
 
     /**
-     * Add {wp4gf_download_link} to the Merge Tag dropdown UI.
-     * Cites:
+     * Merge Tag Dropdown UI.
      */
     public function wp4gf_add_custom_merge_tags( $merge_tags, $form_id, $fields, $element_id ) {
-        $merge_tags[] = array(
-            'label' => 'Wallet Pass Download Link',
-            'tag'   => '{wp4gf_download_link}'
-        );
+        $merge_tags[] = array( 'label' => 'Wallet Pass Download Link', 'tag' => '{wp4gf_download_link}' );
         return $merge_tags;
     }
 
     /**
-     * Replace {wp4gf_download_link} with a unique secure AJAX URL.
-     * Cites:
+     * Merge Tag Replacement.
      */
     public function wp4gf_replace_download_link( $text, $form, $entry, $url_encode, $esc_html, $nl2br, $format ) {
         $tag = '{wp4gf_download_link}';
@@ -144,37 +143,28 @@ class WP4GF_Addon extends GFAddOn {
             'nonce'    => wp_create_nonce( 'wp4gf_download_' . $entry['id'] )
         ), admin_url( 'admin-ajax.php' ) );
 
-        $link = sprintf( '<a href="%s" class="wp4gf-btn">%s</a>', esc_url( $url ), __( 'Download Apple Wallet Pass', 'wallet-pass-generator-for-gravity-forms' ) );
-        
+        $link = sprintf( '<a href="%s" class="wp4gf-btn">%s</a>', esc_url( $url ), __( 'Download Pass', 'wallet-pass-generator-for-gravity-forms' ) );
         return str_replace( $tag, $link, $text );
     }
 
     /**
-     * Securely handle the binary download when the link is clicked.
-     * Cites:
+     * Download Handler.
      */
     public function wp4gf_handle_pass_download() {
         $entry_id = rgget( 'entry_id' );
         $nonce    = rgget( 'nonce' );
 
         if ( ! wp_verify_nonce( $nonce, 'wp4gf_download_' . $entry_id ) ) {
-            wp_die( esc_html__( 'Unauthorized access.', 'wallet-pass-generator-for-gravity-forms' ) );
+            wp_die( 'Unauthorized.' );
         }
 
         $entry = GFAPI::get_entry( $entry_id );
-        if ( is_wp_error( $entry ) ) {
-            wp_die( esc_html__( 'Entry not found.', 'wallet-pass-generator-for-gravity-forms' ) );
-        }
+        $form  = GFAPI::get_form( $entry['form_id'] );
 
-        $form = GFAPI::get_form( $entry['form_id'] );
-
-        // Call factory to generate binary .pkpass
         $pass_data = WP4GF_PKPass_Factory::generate( $entry, $form );
 
-        header( 'Pragma: no-cache' );
         header( 'Content-Type: application/vnd.apple.pkpass' );
         header( 'Content-Disposition: attachment; filename="pass.pkpass"' );
-        
         echo $pass_data;
         exit;
     }
