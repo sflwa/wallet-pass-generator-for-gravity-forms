@@ -12,18 +12,32 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-// Prefix check and Bootstrap
+/**
+ * Bootstrap the Wallet Pass Generator Add-On.
+ * Uses the wp4gf prefix for all functions and classes.
+ */
 add_action( 'gform_loaded', array( 'WP4GF_Bootstrap', 'load' ), 5 );
 
 class WP4GF_Bootstrap {
+
+    /**
+     * Load the required files from the includes folder.
+     * Cites:
+     */
     public static function load() {
+        // Ensure Gravity Forms Add-On Framework is available
         if ( ! method_exists( 'GFForms', 'include_addon_framework' ) ) {
             return;
         }
 
-        require_once( __DIR__ . '/class-wp4gf-addon.php' );
-        require_once( __DIR__ . '/pkpass-factory.php' );
+        // Define the path to the includes directory
+        $includes_path = plugin_dir_path( __FILE__ ) . 'includes/';
 
+        // Include the Add-On class and the Factory engine
+        require_once( $includes_path . 'class-wp4gf-addon.php' );
+        require_once( $includes_path . 'pkpass-factory.php' );
+
+        // Register the Add-On with Gravity Forms
         GFAddOn::register( 'WP4GF_Addon' );
     }
 }
