@@ -1,4 +1,0 @@
-# Block direct access to PHP files in this folder
-<Files *.php>
-    deny from all
-</Files>
