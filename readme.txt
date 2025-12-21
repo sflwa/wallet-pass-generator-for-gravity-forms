@@ -22,11 +22,18 @@ This plugin allows you to generate signed .pkpass files for Apple Wallet directl
 3. Go to **Forms > Settings > Wallet Pass** to enter your Apple Team ID and Certificate paths.
 4. Enable the generator on a per-form basis under **Form Settings > Wallet Pass**.
 
+== Security Note ==
+To protect your Apple certificates, it is highly recommended to add the following code to your site's main `.htaccess` file in the root directory:
+
+`
+# Block direct access to Wallet Pass certificates in uploads
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^wp-content/uploads/wp4gf/.*$ - [F,L]
+</IfModule>
+`
+
 == Instructions ==
 1. **Certificates:** Obtain a Pass Type ID and Certificate from the Apple Developer Portal.
-2. **Secure Storage:** Store your .p12 certificate in a folder that is NOT publicly accessible via URL.
+2. **Secure Storage:** Store your .p12 certificate in `/wp-content/uploads/wp4gf/`. This directory is protected against plugin updates.
 3. **Merge Tag:** Use `{wp4gf_download_link}` in your form's confirmation or notification email to provide the pass to your users.
-
-== Frequently Asked Questions ==
-= Can I use this for free? =
-The plugin logic is free, but Apple requires a $99/year developer membership to sign passes so they are recognized by iPhones.
