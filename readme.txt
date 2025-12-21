@@ -1,12 +1,12 @@
 === Wallet Pass Generator for Gravity Forms ===
-Contributors: gemini-ai
+Contributors: sflwa
 Stable tag: 1.4.3
 Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
-
+Generate Apple Wallet passes from Gravity Form Entries
 == Description ==
 
 A secure, dynamic solution for generating Apple Wallet passes from Gravity Forms entries. This plugin allows administrators to map form fields directly to Apple Wallet pass locations including Primary, Secondary, Auxiliary, Header, and Back fields.
