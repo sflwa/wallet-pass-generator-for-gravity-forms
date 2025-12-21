@@ -1,8 +1,4 @@
 <?php
-/**
- * Factory class for Wallet Pass Generator v1.3.5.
- * Fixed local path resolution for Media Library images.
- */
 class WP4GF_PKPass_Factory {
 
 	public static function generate( $entry, $form ) {
@@ -10,34 +6,35 @@ class WP4GF_PKPass_Factory {
 		$settings      = $addon->get_plugin_settings();
 		$form_settings = $addon->get_form_settings( $form );
 
+		$p12_path     = rgar( $settings, 'wp4gf_p12_path' );
+		$p12_password = rgar( $settings, 'wp4gf_p12_password' );
+
+		if ( ! file_exists( $p12_path ) ) throw new Exception( 'Certificate file not found.' );
+
+		// Validate Cert
+		$certs = array();
+		if ( ! openssl_pkcs12_read( file_get_contents( $p12_path ), $certs, $p12_password ) ) {
+			throw new Exception( 'OpenSSL Error: ' . openssl_error_string() );
+		}
+
 		require_once( plugin_dir_path( __FILE__ ) . '../lib/PHP-PKPass/PKPass.php' );
-		$pass = new \WP4GF\PKPass\PKPass( $settings['wp4gf_p12_path'], $settings['wp4gf_p12_password'] );
+		$pass = new \WP4GF\PKPass\PKPass( $p12_path, $p12_password );
 
-		// Image logic with robust local path resolution
+		// Images
 		$assets_path = plugin_dir_path( __FILE__ ) . '../assets/';
-		
-		// Resolve Logo
-		$logo_url  = rgar( $form_settings, 'wp4gf_logo_path' );
-		$logo_file = self::resolve_image_path( $logo_url, $assets_path . 'logo.png' );
-		$pass->addFile( $logo_file, 'logo.png' );
+		$pass->addFile( self::resolve_image_path( rgar( $form_settings, 'wp4gf_logo_path' ), $assets_path . 'logo.png' ), 'logo.png' );
+		$pass->addFile( self::resolve_image_path( rgar( $form_settings, 'wp4gf_icon_path' ), $assets_path . 'icon.png' ), 'icon.png' );
 
-		// Resolve Icon (MANDATORY for valid passes)
-		$icon_url  = rgar( $form_settings, 'wp4gf_icon_path' );
-		$icon_file = self::resolve_image_path( $icon_url, $assets_path . 'icon.png' );
-		$pass->addFile( $icon_file, 'icon.png' );
-
-		// Build JSON...
 		$json_data = array(
 			'formatVersion'      => 1,
-			'passTypeIdentifier' => $settings['wp4gf_pass_type_id'],
-			'teamIdentifier'     => $settings['wp4gf_team_id'],
+			'passTypeIdentifier' => rgar( $settings, 'wp4gf_pass_type_id' ),
+			'teamIdentifier'     => rgar( $settings, 'wp4gf_team_id' ),
 			'serialNumber'       => 'wp4gf_' . $entry['id'],
 			'organizationName'   => get_bloginfo( 'name' ),
 			'description'        => 'Wallet Pass',
 			'generic'            => array()
 		);
 
-		// Helper for sources
 		$process_area = function( $area, $type, $key ) use ( &$json_data, $addon, $form, $entry, $form_settings ) {
 			$label = rgar( $form_settings, 'wp4gf_lbl_' . $area );
 			if ( empty( $label ) && $area !== 'primary' ) return;
@@ -55,7 +52,6 @@ class WP4GF_PKPass_Factory {
 		$process_area( 'secondary', 'secondary', 's1' );
 		$process_area( 'auxiliary', 'auxiliary', 'a1' );
 
-		// Back Content
 		$back_lbl = rgar( $form_settings, 'wp4gf_lbl_back' ) ?: 'DETAILS';
 		$back_val = GFCommon::replace_variables( rgar( $form_settings, 'wp4gf_val_back' ), $form, $entry );
 		$json_data['generic']['backFields'][] = array( 'key' => 'b1', 'label' => $back_lbl, 'value' => (string)$back_val );
@@ -69,20 +65,10 @@ class WP4GF_PKPass_Factory {
 		return $pass->create();
 	}
 
-	/**
-	 * Resolves Media Library URLs to local paths.
-	 */
 	private static function resolve_image_path( $url, $fallback = '' ) {
 		if ( empty( $url ) ) return $fallback;
-
-		// Method 1: Swap URLs based on standard WordPress constants
 		$local_path = str_replace( content_url(), WP_CONTENT_DIR, $url );
-
-		// Method 2: Fallback to ABSPATH if Method 1 fails (handles some subdirectory installs)
-		if ( ! file_exists( $local_path ) ) {
-			$local_path = ABSPATH . str_replace( home_url( '/' ), '', $url );
-		}
-
+		if ( ! file_exists( $local_path ) ) $local_path = ABSPATH . str_replace( home_url( '/' ), '', $url );
 		return file_exists( $local_path ) ? $local_path : $fallback;
 	}
 }
