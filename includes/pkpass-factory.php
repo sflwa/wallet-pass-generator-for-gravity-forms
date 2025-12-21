@@ -28,11 +28,8 @@ class WP4GF_PKPass_Factory {
         // 3. Initialize the PKPass library (ensure path is correct)
         require_once( plugin_dir_path( __FILE__ ) . '../lib/PHP-PKPass/PKPass.php' );
         
-        // Use the prefixed namespace defined in your PKPass.php
-        $pass = new \WP4GF\PKPass\PKPass();
-        
-        $pass->setCertificatePath( $settings['wp4gf_p12_path'] );
-        $pass->setCertificatePassword( $settings['wp4gf_p12_password'] );
+        // Pass the path and password directly into the constructor
+        $pass = new \WP4GF\PKPass\PKPass( $settings['wp4gf_p12_path'], $settings['wp4gf_p12_password'] );
 
         // 4. Add Custom Images
         if ( ! empty( $form_settings['wp4gf_logo_path'] ) )  { $pass->addFile( $form_settings['wp4gf_logo_path'], 'logo.png' ); }
