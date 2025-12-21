@@ -1,7 +1,7 @@
 <?php
 /**
  * Factory class to generate the .pkpass binary.
- * Handles form data mapping and conditional QR codes.
+ * Handles form data mapping, custom values, and conditional QR codes.
  */
 class WP4GF_PKPass_Factory {
 
@@ -22,11 +22,11 @@ class WP4GF_PKPass_Factory {
 		$header    = self::get_mapped_value( $addon, $form, $entry, $map, 'header_value' );
 		$back      = self::get_mapped_value( $addon, $form, $entry, $map, 'back_value' );
 
-		// 2. Process dynamic QR message
+		// 2. Process dynamic QR message with Gravity Forms variables
 		$barcode_raw = rgar( $form_settings, 'wp4gf_barcode_message' );
 		$barcode_msg = GFCommon::replace_variables( $barcode_raw, $form, $entry );
 
-		// 3. Initialize the PKPass library
+		// 3. Initialize the PKPass library with certificate path and password
 		require_once( plugin_dir_path( __FILE__ ) . '../lib/PHP-PKPass/PKPass.php' );
 		$pass = new \WP4GF\PKPass\PKPass( $settings['wp4gf_p12_path'], $settings['wp4gf_p12_password'] );
 
@@ -61,21 +61,21 @@ class WP4GF_PKPass_Factory {
 			'organizationName'   => get_bloginfo( 'name' ),
 			'description'        => 'Generic Pass',
 			'generic' => array(
-				'headerFields'    => array( array( 'key' => 'h1', 'label' => 'INFO', 'value' => $header ) ),
-				'primaryFields'   => array( array( 'key' => 'p1', 'label' => 'GUEST', 'value' => $primary ) ),
-				'secondaryFields' => array( array( 'key' => 's1', 'label' => 'DATE',  'value' => $secondary ) ),
-				'auxiliaryFields' => array( array( 'key' => 'a1', 'label' => 'TYPE',  'value' => $auxiliary ) ),
-				'backFields'      => array( array( 'key' => 'b1', 'label' => 'DETAILS', 'value' => $back ) )
+				'headerFields'    => array( array( 'key' => 'h1', 'label' => 'INFO', 'value' => (string) $header ) ),
+				'primaryFields'   => array( array( 'key' => 'p1', 'label' => 'GUEST', 'value' => (string) $primary ) ),
+				'secondaryFields' => array( array( 'key' => 's1', 'label' => 'DATE',  'value' => (string) $secondary ) ),
+				'auxiliaryFields' => array( array( 'key' => 'a1', 'label' => 'TYPE',  'value' => (string) $auxiliary ) ),
+				'backFields'      => array( array( 'key' => 'b1', 'label' => 'DETAILS', 'value' => (string) $back ) )
 			)
 		);
 
-		// Issue 2 Fix: Only include the barcodes array if a message exists
+		// Only include the barcodes array if a message exists
 		if ( ! empty( $barcode_msg ) ) {
 			$json_data['barcodes'] = array(
 				array( 
-					'format'          => 'PKBarcodeFormatQR', 
-					'message'         => (string) $barcode_msg, 
-					'messageEncoding' => 'iso-8859-1' 
+					'format'          => 'PKBarcodeFormatQR',
+					'message'         => (string) $barcode_msg,
+					'messageEncoding' => 'iso-8859-1'
 				)
 			);
 		}
@@ -85,7 +85,8 @@ class WP4GF_PKPass_Factory {
 	}
 
 	/**
-	 * Issue 1 Fix: Correctly retrieves mapped values from the generic_map.
+	 * Correctly retrieves values based on the generic_map configuration.
+	 * Handles both standard form fields and "Custom Values".
 	 */
 	private static function get_mapped_value( $addon, $form, $entry, $map, $key ) {
 		if ( empty( $map ) || ! is_array( $map ) ) {
@@ -96,12 +97,18 @@ class WP4GF_PKPass_Factory {
 			if ( rgar( $setting, 'key' ) === $key ) {
 				$value = rgar( $setting, 'value' );
 				
-				// If numeric, it's a field ID; fetch the entry data
+				// Handle "Custom Value" entries
+				if ( $value === 'gf_custom' ) {
+					$custom_value = rgar( $setting, 'custom_value' );
+					return GFCommon::replace_variables( $custom_value, $form, $entry );
+				}
+				
+				// If numeric, it's a standard form field
 				if ( is_numeric( $value ) ) {
 					return $addon->get_field_value( $form, $entry, $value );
 				}
 				
-				// Otherwise, process as a string with merge tags
+				// Fallback for static strings or direct merge tags
 				return GFCommon::replace_variables( $value, $form, $entry );
 			}
 		}
