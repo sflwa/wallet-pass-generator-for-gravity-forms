@@ -1,39 +1,54 @@
 === Wallet Pass Generator for Gravity Forms ===
-Contributors: Your Name
-Tags: gravity forms, apple wallet, pkpass, wallet, checkin
-Requires at least: 5.8
+Contributors: gemini-ai
+Stable tag: 1.2.4
+Requires at least: 5.0
 Tested up to: 6.4
-Stable tag: 1.0.0
+Requires PHP: 7.4
 License: GPLv2 or later
-
-Generate Apple Wallet passes locally from Gravity Forms submissions without 3rd party subscription fees.
+License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
 == Description ==
-This plugin allows you to generate signed .pkpass files for Apple Wallet directly from your WordPress server. It integrates natively with Gravity Forms, providing a custom merge tag for download links in confirmations and notifications.
 
-== Requirements ==
-* **Apple Developer Program Account ($99/year):** Required to generate the necessary Pass Type ID and Signing Certificates.
-* **Gravity Forms:** Must be installed and active.
-* **PHP OpenSSL Extension:** Required for cryptographic signing of the pass.
+A secure, dynamic solution for generating Apple Wallet passes from Gravity Forms entries. This plugin allows administrators to map form fields directly to Apple Wallet pass locations including Primary, Secondary, Auxiliary, Header, and Back fields.
 
 == Installation ==
-1. Upload the plugin folder to `/wp-content/plugins/`.
+
+1. Upload the plugin folder to the `/wp-content/plugins/` directory.
 2. Activate the plugin through the 'Plugins' menu in WordPress.
-3. Go to **Forms > Settings > Wallet Pass** to enter your Apple Team ID and Certificate paths.
-4. Enable the generator on a per-form basis under **Form Settings > Wallet Pass**.
+3. Ensure your Apple `.p12` certificate is moved to the secure directory: `wp-content/uploads/wp4gf/`.
 
-== Security Note ==
-To protect your Apple certificates, it is highly recommended to add the following code to your site's main `.htaccess` file in the root directory:
+== Configuration ==
 
-`
-# Block direct access to Wallet Pass certificates in uploads
-<IfModule mod_rewrite.c>
-RewriteEngine On
-RewriteRule ^wp-content/uploads/wp4gf/.*$ - [F,L]
-</IfModule>
-`
+1. **Global Settings**: Navigate to the Wallet Pass global settings page. Enter your Apple Team ID, Pass Type ID, and the absolute server path to your `.p12` certificate file.
+2. **Form Setup**: Open a specific Gravity Form and navigate to **Settings > Wallet Pass**.
+3. **Primary Field**: Map a label and a field source. This field is **required** to generate a valid pass.
+4. **Optional Fields**: Provide labels for Header, Secondary, Auxiliary, or Back fields. If a label is left blank, that specific field will be omitted from the generated pass.
+5. **Visuals**: Specify absolute paths for your logo and icon. For best results, use 320x100 PNG for logos and 58x58 PNG for icons.
+6. **QR Code**: Enter a URL or text in the QR Code Message field to enable the barcode on the pass.
 
-== Instructions ==
-1. **Certificates:** Obtain a Pass Type ID and Certificate from the Apple Developer Portal.
-2. **Secure Storage:** Store your .p12 certificate in `/wp-content/uploads/wp4gf/`. This directory is protected against plugin updates.
-3. **Merge Tag:** Use `{wp4gf_download_link}` in your form's confirmation or notification email to provide the pass to your users.
+== Frequently Asked Questions ==
+
+= How do I provide the pass to my users? =
+Use the `{wp4gf_download_link}` merge tag in your Gravity Forms confirmations or email notifications.
+
+= Why is the pass not generating? =
+Ensure the Primary Field label and value are set, and verify that your `.p12` path and password are correct in the global settings.
+
+== Changelog ==
+
+= 1.2.4 =
+* Enforced Primary field as a required setting.
+* Added conditional logic to hide optional fields if labels are empty.
+
+= 1.2.3 =
+* Updated Preview CSS for vertical field alignment.
+* Implemented white-background and black-border styling for the admin preview.
+
+= 1.2.2 =
+* Converted Back Field to a textarea for multi-line support and merge tag compatibility.
+
+= 1.2.1 =
+* Major UI overhaul: Replaced dynamic mapping table with fixed, individual field sections for better stability.
+
+= 1.0.0 =
+* Initial release.
