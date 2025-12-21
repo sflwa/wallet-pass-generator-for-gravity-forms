@@ -12,7 +12,7 @@ class WP4GF_Addon extends GFAddOn {
     protected $_min_gravityforms_version = '2.5';
     protected $_slug = 'wallet-pass-generator-for-gravity-forms';
     protected $_path = 'wallet-pass-generator-for-gravity-forms/wallet-pass-generator-for-gravity-forms.php';
-	protected $_full_path = __FILE__;
+    protected $_full_path = __FILE__;
     protected $_title = 'Wallet Pass Generator';
     protected $_short_title = 'Wallet Pass';
 
@@ -34,7 +34,7 @@ class WP4GF_Addon extends GFAddOn {
     }
 
     /**
-     * Global Plugin Settings for Apple Certificates.
+     * Global Plugin Settings.
      */
     public function plugin_settings_fields() {
         return array(
@@ -51,7 +51,8 @@ class WP4GF_Addon extends GFAddOn {
     }
 
     /**
-     * Form Settings using Generic Pass Terminology.
+     * Form Settings with Generic Mapping and Custom Value support.
+     * Cites:
      */
     public function form_settings_fields( $form ) {
         return array(
@@ -60,15 +61,16 @@ class WP4GF_Addon extends GFAddOn {
                 'fields' => array(
                     array( 'name' => 'wp4gf_enabled', 'label' => 'Enable Wallet Pass', 'type' => 'toggle' ),
                     array(
-                        'name'      => 'wp4gf_field_map',
-                        'label'     => 'Generic Field Mapping',
-                        'type'      => 'field_map',
-                        'field_map' => array(
-                            array( 'name' => 'primary_value',   'label' => 'Primary Value',   'required' => true ),
-                            array( 'name' => 'secondary_value', 'label' => 'Secondary Value' ),
-                            array( 'name' => 'auxiliary_value', 'label' => 'Auxiliary Value' ),
-                            array( 'name' => 'header_value',    'label' => 'Header Value' ),
-                            array( 'name' => 'back_value',      'label' => 'Back Value' ),
+                        'name'         => 'wp4gf_generic_map',
+                        'label'        => 'Generic Pass Mapping',
+                        'type'         => 'generic_map', // Use generic_map for custom key/value support
+                        'allow_custom' => true, // Allows "Add Custom Value" in the dropdown
+                        'field_map'    => array(
+                            array( 'name' => 'primary_value',   'label' => 'Primary Value',   'required' => true,  'allow_custom' => true ),
+                            array( 'name' => 'secondary_value', 'label' => 'Secondary Value', 'required' => false, 'allow_custom' => true ),
+                            array( 'name' => 'auxiliary_value', 'label' => 'Auxiliary Value', 'required' => false, 'allow_custom' => true ),
+                            array( 'name' => 'header_value',    'label' => 'Header Value',    'required' => false, 'allow_custom' => true ),
+                            array( 'name' => 'back_value',      'label' => 'Back Value',      'required' => false, 'allow_custom' => true ),
                         ),
                     ),
                     array(
@@ -76,16 +78,16 @@ class WP4GF_Addon extends GFAddOn {
                         'label'   => 'QR Code Message / URL',
                         'type'    => 'text',
                         'class'   => 'large',
-                        'description' => 'Supports merge tags, e.g., https://site.com/checkin?id={entry_id}',
+                        'description' => 'Supports merge tags like {entry_id}.',
                     ),
                 ),
             ),
             array(
                 'title'  => esc_html__( 'Pass Images (Absolute Paths)', 'wallet-pass-generator-for-gravity-forms' ),
                 'fields' => array(
-                    array( 'name' => 'wp4gf_logo_path',  'label' => 'Logo (320x100 PNG)', 'type' => 'text', 'class' => 'large' ),
-                    array( 'name' => 'wp4gf_icon_path',  'label' => 'Icon (58x58 PNG)',   'type' => 'text', 'class' => 'large' ),
-                    array( 'name' => 'wp4gf_thumb_path', 'label' => 'Thumbnail (180x180 PNG)', 'type' => 'text', 'class' => 'large' ),
+                    array( 'name' => 'wp4gf_logo_path',  'label' => 'Logo Path',  'type' => 'text', 'class' => 'large' ),
+                    array( 'name' => 'wp4gf_icon_path',  'label' => 'Icon Path',  'type' => 'text', 'class' => 'large' ),
+                    array( 'name' => 'wp4gf_thumb_path', 'label' => 'Thumb Path', 'type' => 'text', 'class' => 'large' ),
                 ),
             ),
         );
@@ -101,16 +103,19 @@ class WP4GF_Addon extends GFAddOn {
             return $text;
         }
         $url = add_query_arg( array( 'action' => 'wp4gf_download_pass', 'entry_id' => $entry['id'], 'nonce' => wp_create_nonce( 'wp4gf_download_' . $entry['id'] ) ), admin_url( 'admin-ajax.php' ) );
-        $link = sprintf( '<a href="%s" class="wp4gf-download">%s</a>', esc_url( $url ), __( 'Download Apple Wallet Pass', 'wallet-pass-generator-for-gravity-forms' ) );
+        $link = sprintf( '<a href="%s" class="wp4gf-download-btn">%s</a>', esc_url( $url ), __( 'Download Apple Wallet Pass', 'wallet-pass-generator-for-gravity-forms' ) );
         return str_replace( '{wp4gf_download_link}', $link, $text );
     }
 
     public function wp4gf_handle_pass_download() {
         $entry_id = rgget( 'entry_id' );
         if ( ! wp_verify_nonce( rgget( 'nonce' ), 'wp4gf_download_' . $entry_id ) ) { wp_die( 'Unauthorized.' ); }
+        
         $entry = GFAPI::get_entry( $entry_id );
-        $form = GFAPI::get_form( $entry['form_id'] );
+        $form  = GFAPI::get_form( $entry['form_id'] );
+        
         $pass_data = WP4GF_PKPass_Factory::generate( $entry, $form );
+        
         header( 'Content-Type: application/vnd.apple.pkpass' );
         header( 'Content-Disposition: attachment; filename="pass.pkpass"' );
         echo $pass_data;
