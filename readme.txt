@@ -1,8 +1,8 @@
 === Wallet Pass Generator for Gravity Forms ===
 Contributors: gemini-ai
-Stable tag: 1.2.4
+Stable tag: 1.4.3
 Requires at least: 5.0
-Tested up to: 6.4
+Tested up to: 6.9
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
@@ -33,6 +33,25 @@ Use the `{wp4gf_download_link}` merge tag in your Gravity Forms confirmations or
 
 = Why is the pass not generating? =
 Ensure the Primary Field label and value are set, and verify that your `.p12` path and password are correct in the global settings.
+
+== Troubleshooting ==
+
+= Common Error: OpenSSL "invalid key length" =
+If you see this error on modern hosting (like SiteGround), it means your .p12 file is using older encryption that OpenSSL 3.x rejects by default.
+
+To fix this, perform the "2-Step Legacy to Modern AES" conversion on your Mac Terminal:
+
+1. Unpack the original file (requires your Keychain password):
+   openssl pkcs12 -in YourCert.p12 -nodes -legacy -out temp.pem
+
+2. Repack it using Modern AES-256 encryption:
+   openssl pkcs12 -export -in temp.pem -out YourCert_Fixed.p12 -certpbe AES-256-CBC -keypbe AES-256-CBC -macalg SHA256
+
+3. Upload YourCert_Fixed.p12 to your server and update the password in settings.
+
+= Error: "Could not find private key" =
+This occurs if you only exported the Certificate from Keychain Access. 
+Fix: In Keychain Access, click the arrow (▶) next to the certificate to reveal the Private Key. Highlight BOTH items before selecting "Export".
 
 == Changelog ==
 
