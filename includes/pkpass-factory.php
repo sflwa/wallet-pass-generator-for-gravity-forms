@@ -1,57 +1,104 @@
 <?php
 /**
- * Factory class to generate the .pkpass binary.
+ * Modified PKPass Library for WordPress Standards.
+ * Prefix: WP4GF | Namespace: WP4GF\PKPass
  */
-class WP4GF_PKPass_Factory {
 
-    public static function generate( $entry, $form ) {
-        $addon = WP4GF_Addon::get_instance();
-        $settings = $addon->get_plugin_settings();
-        $form_settings = $addon->get_form_settings( $form );
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedNamespaceFound
+namespace WP4GF\PKPass; 
+// phpcs:enable
 
-        // 1. Resolve field mapping
-        $map = rgar( $form_settings, 'wp4gf_field_map' );
-        $primary   = $addon->get_field_value( $form, $entry, $map['primary_value'] );
-        $secondary = $addon->get_field_value( $form, $entry, $map['secondary_value'] );
-        $auxiliary = $addon->get_field_value( $form, $entry, $map['auxiliary_value'] );
-        $header    = $addon->get_field_value( $form, $entry, $map['header_value'] );
-        $back      = $addon->get_field_value( $form, $entry, $map['back_value'] );
+use ZipArchive;
 
-        // 2. Process dynamic QR message
-        $barcode_raw = rgar( $form_settings, 'wp4gf_barcode_message' );
-        $barcode_msg = GFCommon::replace_variables( $barcode_raw, $form, $entry );
+class PKPass {
+    const MIME_TYPE = 'application/vnd.apple.pkpass';
 
-        require_once( plugin_dir_path( __FILE__ ) . '../lib/PHP-PKPass/PKPass.php' );
-        $pass = new PHP_PKPass\PKPass();
-        $pass->setCertificate( $settings['wp4gf_p12_path'] );
-        $pass->setCertificatePassword( $settings['wp4gf_p12_password'] );
+    protected $certPath;
+    protected $certPass;
+    protected $tempPath;
+    protected $json;
+    protected $files = [];
 
-        // 3. Add Custom Images
-        if ( ! empty( $form_settings['wp4gf_logo_path'] ) )  { $pass->addFile( $form_settings['wp4gf_logo_path'], 'logo.png' ); }
-        if ( ! empty( $form_settings['wp4gf_icon_path'] ) )  { $pass->addFile( $form_settings['wp4gf_icon_path'], 'icon.png' ); }
-        if ( ! empty( $form_settings['wp4gf_thumb_path'] ) ) { $pass->addFile( $form_settings['wp4gf_thumb_path'], 'thumbnail.png' ); }
+    public function __construct($certificatePath = null, $certificatePassword = null) {
+        $this->tempPath = sys_get_temp_dir();
+        if ($certificatePath) { $this->certPath = $certificatePath; }
+        if ($certificatePassword) { $this->certPass = $certificatePassword; }
+    }
 
-        // 4. Build JSON structure
-        $json_data = array(
-            'formatVersion'      => 1,
-            'passTypeIdentifier' => $settings['wp4gf_pass_type_id'],
-            'teamIdentifier'     => $settings['wp4gf_team_id'],
-            'serialNumber'       => 'wp4gf_' . $entry['id'],
-            'organizationName'   => get_bloginfo( 'name' ),
-            'description'        => 'Generic Pass',
-            'barcodes' => array(
-                array( 'format' => 'PKBarcodeFormatQR', 'message' => (string) $barcode_msg, 'messageEncoding' => 'iso-8859-1' )
-            ),
-            'generic' => array(
-                'headerFields'    => array( array( 'key' => 'h1', 'label' => 'INFO', 'value' => $header ) ),
-                'primaryFields'   => array( array( 'key' => 'p1', 'label' => 'GUEST', 'value' => $primary ) ),
-                'secondaryFields' => array( array( 'key' => 's1', 'label' => 'DATE',  'value' => $secondary ) ),
-                'auxiliaryFields' => array( array( 'key' => 'a1', 'label' => 'TYPE',  'value' => $auxiliary ) ),
-                'backFields'      => array( array( 'key' => 'b1', 'label' => 'DETAILS', 'value' => $back ) )
-            )
-        );
+    public function setJSON($data) {
+        $this->json = (is_array($data) || is_object($data)) ? json_encode($data) : $data;
+    }
 
-        $pass->setJSON( json_encode( $json_data ) );
-        return $pass->create();
+    public function addFile($path, $name = null) {
+        if (!file_exists($path)) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+            throw new \Exception(sprintf('File %s does not exist.', esc_html($path)));
+        }
+        $name = $name ?: basename($path);
+        $this->files[$name] = $path;
+    }
+
+    public function create() {
+        $manifest = $this->createManifest();
+        $signature = $this->createSignature($manifest);
+        return $this->createZip($manifest, $signature);
+    }
+
+    protected function createManifest() {
+        $sha = ['pass.json' => sha1($this->json)];
+        foreach ($this->files as $name => $path) {
+            $sha[$name] = sha1(file_get_contents($path));
+        }
+        return json_encode((object)$sha);
+    }
+
+    protected function createSignature($manifest) {
+        $manifest_path = tempnam($this->tempPath, 'pkpass');
+        $signature_path = tempnam($this->tempPath, 'pkpass');
+        file_put_contents($manifest_path, $manifest);
+
+        $pkcs12 = file_get_contents($this->certPath);
+        $certs = [];
+        if (!openssl_pkcs12_read($pkcs12, $certs, $this->certPass)) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+            throw new \Exception('Could not read certificate. Check path and password.');
+        }
+
+        $certdata = openssl_x509_read($certs['cert']);
+        $privkey = openssl_pkey_get_private($certs['pkey'], $this->certPass);
+
+        openssl_pkcs7_sign($manifest_path, $signature_path, $certdata, $privkey, [], PKCS7_BINARY | PKCS7_DETACHED);
+
+        $signature = file_get_contents($signature_path);
+        wp_delete_file($manifest_path);
+        wp_delete_file($signature_path);
+
+        return $this->convertPEMtoDER($signature);
+    }
+
+    protected function convertPEMtoDER($signature) {
+        $begin = 'filename="smime.p7s"';
+        $signature = substr($signature, strpos($signature, $begin) + strlen($begin));
+        $signature = substr($signature, 0, strpos($signature, '------'));
+        return base64_decode(trim($signature));
+    }
+
+    protected function createZip($manifest, $signature) {
+        $zip = new ZipArchive();
+        $filename = tempnam($this->tempPath, 'pkpass');
+        if (!$zip->open($filename, ZipArchive::OVERWRITE)) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+            throw new \Exception('Could not open ' . esc_html(basename($filename)) . ' with ZipArchive.');
+        }
+
+        $zip->addFromString('signature', $signature);
+        $zip->addFromString('manifest.json', $manifest);
+        $zip->addFromString('pass.json', $this->json);
+        foreach ($this->files as $name => $path) { $zip->addFile($path, $name); }
+        $zip->close();
+
+        $content = file_get_contents($filename);
+        wp_delete_file($filename);
+        return $content;
     }
 }
