@@ -14,6 +14,7 @@ class WP4GF_PKPass_Factory {
 		// Validate Cert
 		$certs = array();
 		if ( ! openssl_pkcs12_read( file_get_contents( $p12_path ), $certs, $p12_password ) ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The exception message is escaped in the Addon download handler before display.
 			throw new Exception( 'OpenSSL Error: ' . openssl_error_string() );
 		}
 
