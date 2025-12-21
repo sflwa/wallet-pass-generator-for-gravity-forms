@@ -1,11 +1,12 @@
 <?php
 /**
  * Plugin Name: Wallet Pass Generator for Gravity Forms
- * Plugin URI:  https://yourdomain.com
+ * Plugin URI:  https://github.com/sflwa/wallet-pass-generator-for-gravity-forms/
  * Description: Generate Apple Wallet passes from Gravity Forms submissions locally.
  * Version:     1.4.3
- * Author:      Your Name
+ * Author:      South Florida Web Advisors
  * Text Domain: wallet-pass-generator-for-gravity-forms
+ * License: GPLv2 or later
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
