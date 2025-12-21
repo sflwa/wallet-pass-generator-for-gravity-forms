@@ -1,7 +1,7 @@
 <?php
 /**
  * Main Add-On Class for Wallet Pass Generator.
- * Version: 1.6.3
+ * Version: 1.6.6
  * Prefix: wp4gf | Text Domain: wallet-pass-generator-for-gravity-forms
  */
 
@@ -9,7 +9,7 @@ GFForms::include_addon_framework();
 
 class WP4GF_Addon extends GFAddOn {
 
-	protected $_version                  = '1.6.3';
+	protected $_version                  = '1.6.6';
 	protected $_min_gravityforms_version = '2.5';
 	protected $_slug                     = 'wallet-pass-generator-for-gravity-forms';
 	protected $_path                     = 'wallet-pass-generator-for-gravity-forms/wallet-pass-generator-for-gravity-forms.php';
@@ -45,8 +45,6 @@ class WP4GF_Addon extends GFAddOn {
 		add_filter( 'gform_replace_merge_tags', array( $this, 'wp4gf_replace_download_link' ), 10, 7 );
 		add_action( 'wp_ajax_wp4gf_download_pass', array( $this, 'wp4gf_handle_pass_download' ) );
 		add_action( 'wp_ajax_nopriv_wp4gf_download_pass', array( $this, 'wp4gf_handle_pass_download' ) );
-		add_filter( 'gform_entry_list_columns', array( $this, 'wp4gf_add_entry_column' ), 10, 2 );
-		add_action( 'gform_entry_list_column_wp4gf_last_gen', array( $this, 'wp4gf_entry_column_content' ), 10, 3 );
 	}
 
 	public function plugin_settings_fields() {
@@ -132,7 +130,7 @@ class WP4GF_Addon extends GFAddOn {
 		<div id="wp4gf-pass-preview" style="background:#f3f3f3; width:320px; border:1px solid #ccc; border-radius:15px; padding:20px; font-family:-apple-system, sans-serif; color:#000;">
 			<div style="background:#fff; border-radius:10px; padding:15px; box-shadow:0 4px 10px rgba(0,0,0,0.1); position:relative; min-height: 250px;">
 				<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-					<img class="prev-logo-img" src="' . $assets_url . 'logo.png" style="max-width:100px; max-height:35px; object-fit:contain;">
+					<img class="prev-logo-img" src="' . esc_url( $assets_url . 'logo.png' ) . '" style="max-width:100px; max-height:35px; object-fit:contain;">
 				</div>
 				<div class="prev-box-primary" style="margin-bottom:15px;">
 					<div class="prev-lbl-primary" style="font-size:9px; font-weight:bold; text-transform:uppercase; color:#666;">PRIMARY</div>
@@ -154,8 +152,8 @@ class WP4GF_Addon extends GFAddOn {
 		<script>
 		jQuery(document).ready(function($) {
 			function update() {
-				const siteUrl = "' . $site_url . '";
-				const absPath = "' . $abs_path . '";
+				const siteUrl = "' . esc_url( $site_url ) . '";
+				const absPath = "' . esc_js( $abs_path ) . '";
 				var logo = $("input[name*=\'wp4gf_logo_path\']").val();
 				if(logo) $(".prev-logo-img").attr("src", logo.replace(absPath, siteUrl));
 
@@ -169,7 +167,6 @@ class WP4GF_Addon extends GFAddOn {
 					$(".prev-lbl-" + f).text(lbl || f.toUpperCase());
 					$(".prev-val-" + f).text(val || "Value");
 					
-					// Core Logic: Hide auxiliary if QR is active
 					if (f === "auxiliary" && qrActive) {
 						$(".prev-box-auxiliary").hide();
 					} else {
@@ -182,8 +179,9 @@ class WP4GF_Addon extends GFAddOn {
 			update();
 		});
 		</script>';
-		if ( $echo ) { // phpcs:ignore
-			echo $html;
+		if ( $echo ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			echo $html; 
 		}
 		return $html;
 	}
@@ -204,15 +202,6 @@ class WP4GF_Addon extends GFAddOn {
 		return str_replace( '{wp4gf_download_link}', sprintf( '<a href="%s" class="wp4gf-btn" style="background:#000; color:#fff; padding:10px 20px; text-decoration:none; border-radius:5px;">Download Pass</a>', esc_url( $url ) ), $text );
 	}
 
-	public function wp4gf_add_entry_column( $columns, $form_id ) {
-		$columns['wp4gf_last_gen'] = 'Pass Generated';
-		return $columns;
-	}
-
-	public function wp4gf_entry_column_content( $form_id, $field_id, $value ) {
-		return ! empty( $value ) ? esc_html( $value ) : '-';
-	}
-
 	public function wp4gf_handle_pass_download() {
 		header( 'Cache-Control: no-cache, must-revalidate, max-age=0' );
 		header( 'Pragma: no-cache' );
@@ -221,21 +210,19 @@ class WP4GF_Addon extends GFAddOn {
 		if ( ! hash_equals( wp_hash( $entry_id . 'wp4gf_secure_download' ), rgget( 'hash' ) ) ) wp_die( 'Unauthorized.' );
 		
 		$entry = GFAPI::get_entry( $entry_id );
-		$form_id = $entry['form_id'];
-
-		global $wpdb;
-		$table_name = $wpdb->prefix . 'gf_form_meta';
-		$form_meta = $wpdb->get_var( $wpdb->prepare( "SELECT display_meta FROM $table_name WHERE form_id = %d", $form_id ) );
-		$form_meta = json_decode( $form_meta, true );
+		$form  = GFAPI::get_form( $entry['form_id'] );
+		$form_settings = $this->get_form_settings( $form );
 		
-		if ( ! isset( $form_meta[$this->_slug]['wp4gf_enabled'] ) || $form_meta[$this->_slug]['wp4gf_enabled'] !== '1' ) {
+		if ( rgar( $form_settings, 'wp4gf_enabled' ) !== '1' ) {
 			wp_die( '<h3>Access Denied</h3><p>Wallet Pass generation is currently disabled for this form.</p>' );
 		}
 
 		try {
-			$form = GFAPI::get_form( $form_id );
 			$pass_data = WP4GF_PKPass_Factory::generate( $entry, $form );
-			gform_update_meta( $entry['id'], 'wp4gf_last_gen', current_time( 'Y-m-d H:i:s' ) );
+
+			// NEW: Add a note to the entry instead of updating a column
+			GFAPI::add_note( $entry['id'], 0, 'Wallet Pass', 'Apple Wallet Pass was generated/downloaded.' );
+
 			header( 'Content-Type: application/vnd.apple.pkpass' );
 			header( 'Content-Disposition: attachment; filename="pass.pkpass"' );
 			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
