@@ -111,17 +111,24 @@ class WP4GF_Addon extends GFAddOn {
 						'label'        => esc_html__( 'Generic Pass Mapping', 'wallet-pass-generator-for-gravity-forms' ),
 						'type'         => 'generic_map',
 						'key_field'    => array(
-							'title'        => 'Apple Pass Field',
-							'allow_custom' => false,
-							'choices'      => array(
-								array( 'label' => 'Primary Value',   'value' => 'primary_value' ),
-								array( 'label' => 'Secondary Value', 'value' => 'secondary_value' ),
-								array( 'label' => 'Auxiliary Value', 'value' => 'auxiliary_value' ),
-								array( 'label' => 'Header Value',    'value' => 'header_value' ),
-								array( 'label' => 'Back Value',      'value' => 'back_value' ),
+							'title'   => 'Apple Pass Location',
+							'choices' => array(
+								array( 'label' => 'Primary Field',   'value' => 'primary_value' ),
+								array( 'label' => 'Secondary Field', 'value' => 'secondary_value' ),
+								array( 'label' => 'Auxiliary Field', 'value' => 'auxiliary_value' ),
+								array( 'label' => 'Header Field',    'value' => 'header_value' ),
+								array( 'label' => 'Back Field',      'value' => 'back_value' ),
 							),
 						),
-						'value_field'  => array( 'title' => 'Form Value', 'allow_custom' => true ),
+						'value_field'  => array( 
+							'title'        => 'Form Value',
+							'allow_custom' => true 
+						),
+						'custom_field' => array(
+							'name'  => 'label_value',
+							'title' => 'Display Label (e.g. NAME)',
+							'type'  => 'text',
+						),
 					),
 					array(
 						'name'        => 'wp4gf_barcode_message',
@@ -136,7 +143,7 @@ class WP4GF_Addon extends GFAddOn {
 				'title'  => esc_html__( 'Pass Images (Absolute Paths)', 'wallet-pass-generator-for-gravity-forms' ),
 				'fields' => array(
 					array( 'name' => 'wp4gf_logo_path',  'label' => 'Logo Path (320x100 PNG)',  'type' => 'text', 'class' => 'large' ),
-					array( 'name' => 'wp4gf_icon_path',  'label' => 'Icon Path (58x58 PNG)',    'type' => 'text', 'class' => 'large', 'description' => 'Mandatory. Default fallback used if blank.' ),
+					array( 'name' => 'wp4gf_icon_path',  'label' => 'Icon Path (58x58 PNG)',    'type' => 'text', 'class' => 'large', 'description' => 'Mandatory. Fallback used if blank.' ),
 					array( 'name' => 'wp4gf_thumb_path', 'label' => 'Thumb Path (180x180 PNG)', 'type' => 'text', 'class' => 'large' ),
 				),
 			),
@@ -155,17 +162,17 @@ class WP4GF_Addon extends GFAddOn {
 			</div>
 			
 			<div style="margin-bottom: 20px;">
-				<div style="font-size: 10px; text-transform: uppercase; opacity: 0.8;">Primary Label</div>
+				<div class="prev-label-primary" style="font-size: 10px; text-transform: uppercase; opacity: 0.8;">Primary Label</div>
 				<div class="prev-primary" style="font-size: 24px; font-weight: 300;">Johnny Appleseed</div>
 			</div>
 
 			<div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
 				<div>
-					<div style="font-size: 10px; text-transform: uppercase; opacity: 0.8;">Secondary</div>
+					<div class="prev-label-secondary" style="font-size: 10px; text-transform: uppercase; opacity: 0.8;">Secondary</div>
 					<div class="prev-secondary" style="font-size: 16px;">Value</div>
 				</div>
 				<div style="text-align: right;">
-					<div style="font-size: 10px; text-transform: uppercase; opacity: 0.8;">Auxiliary</div>
+					<div class="prev-label-aux" style="font-size: 10px; text-transform: uppercase; opacity: 0.8;">Auxiliary</div>
 					<div class="prev-aux" style="font-size: 16px;">Value</div>
 				</div>
 			</div>
@@ -182,23 +189,38 @@ class WP4GF_Addon extends GFAddOn {
 		<script>
 		jQuery(document).ready(function($) {
 			function updatePreview() {
-				// Update Labels based on mapping selects
 				$("#wp4gf_generic_map tr").each(function() {
 					var key = $(this).find("select[name*=\'key\']").val();
-					var val = $(this).find("select[name*=\'value\'] option:selected").text();
-					if(!val || val == "Select a Field") return;
+					var $valField = $(this).find("select[name*=\'value\']");
+					var customLabel = $(this).find("input[name*=\'label_value\']").val();
+					var val = "";
 
-					if(key == "primary_value") $(".prev-primary").text(val);
-					if(key == "secondary_value") $(".prev-secondary").text(val);
-					if(key == "auxiliary_value") $(".prev-aux").text(val);
+					// Get Value Display
+					if($valField.val() === "gf_custom") {
+						val = $(this).find("input[name*=\'custom_value\']").val() || "Custom Text";
+					} else {
+						val = $valField.find("option:selected").text();
+						if(val === "Select a Field") val = "Value";
+					}
+
+					// Apply to Preview
+					if(key === "primary_value") {
+						if(customLabel) $(".prev-label-primary").text(customLabel);
+						$(".prev-primary").text(val);
+					}
+					if(key === "secondary_value") {
+						if(customLabel) $(".prev-label-secondary").text(customLabel);
+						$(".prev-secondary").text(val);
+					}
+					if(key === "auxiliary_value") {
+						if(customLabel) $(".prev-label-aux").text(customLabel);
+						$(".prev-aux").text(val);
+					}
 				});
-
-				// QR Code Visibility
 				var qrMsg = $("input[name*=\'wp4gf_barcode_message\']").val();
 				qrMsg ? $(".prev-qr").show() : $(".prev-qr").hide();
 			}
-
-			$(document).on("change", "select[name*=\'wp4gf_generic_map\'], input[name*=\'wp4gf_barcode_message\']", updatePreview);
+			$(document).on("change keyup", ".gaddon-setting-row-generic_map input, .gaddon-setting-row-generic_map select, input[name*=\'wp4gf_barcode_message\']", updatePreview);
 			updatePreview();
 		});
 		</script>';
