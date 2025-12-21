@@ -57,12 +57,14 @@ class WP4GF_Addon extends GFAddOn {
 		parent::init();
 		add_filter( 'gform_custom_merge_tags', array( $this, 'wp4gf_add_custom_merge_tags' ), 10, 4 );
 		add_filter( 'gform_replace_merge_tags', array( $this, 'wp4gf_replace_download_link' ), 10, 7 );
+		
+		// AJAX listeners for both logged-in and logged-out users
 		add_action( 'wp_ajax_wp4gf_download_pass', array( $this, 'wp4gf_handle_pass_download' ) );
 		add_action( 'wp_ajax_nopriv_wp4gf_download_pass', array( $this, 'wp4gf_handle_pass_download' ) );
 	}
 
 	/**
-	 * Configures the Global Settings page with detailed descriptions and upload instructions.
+	 * Global Settings page with detailed descriptions and upload instructions.
 	 */
 	public function plugin_settings_fields() {
 		$upload_url = admin_url( 'media-new.php' );
@@ -118,7 +120,7 @@ class WP4GF_Addon extends GFAddOn {
 	}
 
 	/**
-	 * Configures Form Settings with Preview, Generic Mapping, and Image paths.
+	 * Form Settings with Preview, Generic Mapping, and Image paths.
 	 */
 	public function form_settings_fields( $form ) {
 		return array(
@@ -223,23 +225,49 @@ class WP4GF_Addon extends GFAddOn {
 		return $merge_tags;
 	}
 
+	/**
+	 * Replaces merge tag with a link containing a secure entry hash.
+	 */
 	public function wp4gf_replace_download_link( $text, $form, $entry, $url_encode, $esc_html, $nl2br, $format ) {
 		if ( strpos( $text, '{wp4gf_download_link}' ) === false || empty( $entry ) ) {
 			return $text;
 		}
-		$url  = add_query_arg( array( 'action' => 'wp4gf_download_pass', 'entry_id' => $entry['id'], 'nonce' => wp_create_nonce( 'wp4gf_download_' . $entry['id'] ) ), admin_url( 'admin-ajax.php' ) );
+
+		// Generate a secure hash instead of a user-specific nonce to allow public access
+		$hash = wp_hash( $entry['id'] . 'wp4gf_secure_download' );
+
+		$url  = add_query_arg( array( 
+			'action'   => 'wp4gf_download_pass', 
+			'entry_id' => $entry['id'], 
+			'hash'     => $hash 
+		), admin_url( 'admin-ajax.php' ) );
+
 		$link = sprintf( '<a href="%s" class="wp4gf-btn">%s</a>', esc_url( $url ), __( 'Download Apple Wallet Pass', 'wallet-pass-generator-for-gravity-forms' ) );
 		return str_replace( '{wp4gf_download_link}', $link, $text );
 	}
 
+	/**
+	 * Handles the pass download using hash verification for security.
+	 */
 	public function wp4gf_handle_pass_download() {
-		$entry_id = rgget( 'entry_id' );
-		if ( ! wp_verify_nonce( rgget( 'nonce' ), 'wp4gf_download_' . $entry_id ) ) {
-			wp_die( 'Unauthorized.' );
+		$entry_id      = rgget( 'entry_id' );
+		$received_hash = rgget( 'hash' );
+
+		// Verify the hash matches the entry ID for secure public access
+		$expected_hash = wp_hash( $entry_id . 'wp4gf_secure_download' );
+
+		if ( ! hash_equals( $expected_hash, $received_hash ) ) {
+			wp_die( 'Unauthorized access. Secure link invalid.', 'Unauthorized', array( 'response' => 403 ) );
 		}
-		$entry     = GFAPI::get_entry( $entry_id );
+
+		$entry = GFAPI::get_entry( $entry_id );
+		if ( is_wp_error( $entry ) ) {
+			wp_die( 'Entry not found.' );
+		}
+
 		$form      = GFAPI::get_form( $entry['form_id'] );
 		$pass_data = WP4GF_PKPass_Factory::generate( $entry, $form );
+		
 		header( 'Content-Type: application/vnd.apple.pkpass' );
 		header( 'Content-Disposition: attachment; filename="pass.pkpass"' );
 		echo $pass_data;
