@@ -3,7 +3,7 @@
  * Plugin Name: Wallet Pass Generator for Gravity Forms
  * Plugin URI:  https://yourdomain.com
  * Description: Generate Apple Wallet passes from Gravity Forms submissions locally.
- * Version:     1.0.0
+ * Version:     1.4.3
  * Author:      Your Name
  * Text Domain: wallet-pass-generator-for-gravity-forms
  */
