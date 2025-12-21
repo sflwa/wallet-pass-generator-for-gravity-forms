@@ -33,9 +33,6 @@ class WP4GF_Addon extends GFAddOn {
         add_action( 'wp_ajax_nopriv_wp4gf_download_pass', array( $this, 'wp4gf_handle_pass_download' ) );
     }
 
-    /**
-     * Global Plugin Settings.
-     */
     public function plugin_settings_fields() {
         return array(
             array(
@@ -50,10 +47,6 @@ class WP4GF_Addon extends GFAddOn {
         );
     }
 
-    /**
-     * Form Settings with Generic Mapping and Custom Value support.
-     * Cites:
-     */
     public function form_settings_fields( $form ) {
         return array(
             array(
@@ -63,14 +56,21 @@ class WP4GF_Addon extends GFAddOn {
                     array(
                         'name'         => 'wp4gf_generic_map',
                         'label'        => 'Generic Pass Mapping',
-                        'type'         => 'generic_map', // Use generic_map for custom key/value support
-                        'allow_custom' => true, // Allows "Add Custom Value" in the dropdown
-                        'field_map'    => array(
-                            array( 'name' => 'primary_value',   'label' => 'Primary Value',   'required' => true,  'allow_custom' => true ),
-                            array( 'name' => 'secondary_value', 'label' => 'Secondary Value', 'required' => false, 'allow_custom' => true ),
-                            array( 'name' => 'auxiliary_value', 'label' => 'Auxiliary Value', 'required' => false, 'allow_custom' => true ),
-                            array( 'name' => 'header_value',    'label' => 'Header Value',    'required' => false, 'allow_custom' => true ),
-                            array( 'name' => 'back_value',      'label' => 'Back Value',      'required' => false, 'allow_custom' => true ),
+                        'type'         => 'generic_map',
+                        'key_field'    => array(
+                            'title'        => 'Apple Pass Field',
+                            'allow_custom' => false, // Keep the keys fixed
+                            'choices'      => array(
+                                array( 'label' => 'Primary Value',   'value' => 'primary_value' ),
+                                array( 'label' => 'Secondary Value', 'value' => 'secondary_value' ),
+                                array( 'label' => 'Auxiliary Value', 'value' => 'auxiliary_value' ),
+                                array( 'label' => 'Header Value',    'value' => 'header_value' ),
+                                array( 'label' => 'Back Value',      'value' => 'back_value' ),
+                            ),
+                        ),
+                        'value_field'  => array(
+                            'title'        => 'Form Value',
+                            'allow_custom' => true, // Allows the text field switch for values
                         ),
                     ),
                     array(
@@ -103,19 +103,16 @@ class WP4GF_Addon extends GFAddOn {
             return $text;
         }
         $url = add_query_arg( array( 'action' => 'wp4gf_download_pass', 'entry_id' => $entry['id'], 'nonce' => wp_create_nonce( 'wp4gf_download_' . $entry['id'] ) ), admin_url( 'admin-ajax.php' ) );
-        $link = sprintf( '<a href="%s" class="wp4gf-download-btn">%s</a>', esc_url( $url ), __( 'Download Apple Wallet Pass', 'wallet-pass-generator-for-gravity-forms' ) );
+        $link = sprintf( '<a href="%s" class="wp4gf-btn">%s</a>', esc_url( $url ), __( 'Download Apple Wallet Pass', 'wallet-pass-generator-for-gravity-forms' ) );
         return str_replace( '{wp4gf_download_link}', $link, $text );
     }
 
     public function wp4gf_handle_pass_download() {
         $entry_id = rgget( 'entry_id' );
         if ( ! wp_verify_nonce( rgget( 'nonce' ), 'wp4gf_download_' . $entry_id ) ) { wp_die( 'Unauthorized.' ); }
-        
         $entry = GFAPI::get_entry( $entry_id );
         $form  = GFAPI::get_form( $entry['form_id'] );
-        
         $pass_data = WP4GF_PKPass_Factory::generate( $entry, $form );
-        
         header( 'Content-Type: application/vnd.apple.pkpass' );
         header( 'Content-Disposition: attachment; filename="pass.pkpass"' );
         echo $pass_data;
