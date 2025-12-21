@@ -128,7 +128,7 @@ class WP4GF_Addon extends GFAddOn {
 						'label'       => esc_html__( 'QR Code Message / URL', 'wallet-pass-generator-for-gravity-forms' ),
 						'type'        => 'text',
 						'class'       => 'large',
-						'description' => esc_html__( 'Supports merge tags like {entry_id}.', 'wallet-pass-generator-for-gravity-forms' ),
+						'description' => esc_html__( 'QR will only show if this field is not empty. Supports merge tags.', 'wallet-pass-generator-for-gravity-forms' ),
 					),
 				),
 			),
@@ -136,33 +136,73 @@ class WP4GF_Addon extends GFAddOn {
 				'title'  => esc_html__( 'Pass Images (Absolute Paths)', 'wallet-pass-generator-for-gravity-forms' ),
 				'fields' => array(
 					array( 'name' => 'wp4gf_logo_path',  'label' => 'Logo Path (320x100 PNG)',  'type' => 'text', 'class' => 'large' ),
-					array( 'name' => 'wp4gf_icon_path',  'label' => 'Icon Path (58x58 PNG)',    'type' => 'text', 'class' => 'large', 'description' => 'Mandatory. Fallback used if blank.' ),
+					array( 'name' => 'wp4gf_icon_path',  'label' => 'Icon Path (58x58 PNG)',    'type' => 'text', 'class' => 'large', 'description' => 'Mandatory. Default fallback used if blank.' ),
 					array( 'name' => 'wp4gf_thumb_path', 'label' => 'Thumb Path (180x180 PNG)', 'type' => 'text', 'class' => 'large' ),
 				),
 			),
 		);
 	}
 
+	/**
+	 * Renders the visual pass preview with dynamic JS updates.
+	 */
 	public function settings_pass_preview( $field, $echo = true ) {
 		$html = '
-		<div id="wp4gf-pass-preview" style="background-color: #ff66cc; width: 320px; border-radius: 15px; padding: 20px; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; position: relative; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+		<div id="wp4gf-pass-preview" style="background-color: #ff66cc; width: 320px; border-radius: 15px; padding: 20px; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; position: relative; box-shadow: 0 4px 10px rgba(0,0,0,0.2); margin-bottom: 20px;">
 			<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
-				<div style="font-weight: bold; font-size: 18px;">Logo Text</div>
-				<div style="width: 50px; height: 50px; border-radius: 4px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 10px;">THUMB</div>
+				<div class="prev-logo" style="font-weight: bold; font-size: 18px;">Logo Text</div>
+				<div class="prev-thumb" style="width: 50px; height: 50px; border-radius: 4px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 10px;">THUMB</div>
 			</div>
+			
 			<div style="margin-bottom: 20px;">
 				<div style="font-size: 10px; text-transform: uppercase; opacity: 0.8;">Primary Label</div>
-				<div style="font-size: 24px; font-weight: 300;">Johnny Appleseed</div>
+				<div class="prev-primary" style="font-size: 24px; font-weight: 300;">Johnny Appleseed</div>
 			</div>
+
 			<div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-				<div><div style="font-size: 10px; text-transform: uppercase; opacity: 0.8;">Secondary</div><div style="font-size: 16px;">Value</div></div>
-				<div style="text-align: right;"><div style="font-size: 10px; text-transform: uppercase; opacity: 0.8;">Auxiliary</div><div style="font-size: 16px;">Value</div></div>
+				<div>
+					<div style="font-size: 10px; text-transform: uppercase; opacity: 0.8;">Secondary</div>
+					<div class="prev-secondary" style="font-size: 16px;">Value</div>
+				</div>
+				<div style="text-align: right;">
+					<div style="font-size: 10px; text-transform: uppercase; opacity: 0.8;">Auxiliary</div>
+					<div class="prev-aux" style="font-size: 16px;">Value</div>
+				</div>
 			</div>
-			<div style="background: #fff; padding: 10px; border-radius: 5px; text-align: center; margin-top: 10px;">
-				<div style="color: #000; font-size: 12px; border: 2px solid #000; height: 80px; display: flex; align-items: center; justify-content: center; font-weight: bold;">QR CODE AREA</div>
+
+			<div class="prev-qr" style="background: #fff; padding: 10px; border-radius: 5px; text-align: center; margin-top: 10px; display: none;">
+				<div style="color: #000; font-size: 12px; border: 2px solid #000; height: 80px; display: flex; align-items: center; justify-content: center; font-weight: bold;">
+					QR CODE ACTIVE
+				</div>
 			</div>
+			
 			<div style="position: absolute; bottom: 10px; right: 15px; font-size: 12px; opacity: 0.8;">ⓘ</div>
-		</div>';
+		</div>
+
+		<script>
+		jQuery(document).ready(function($) {
+			function updatePreview() {
+				// Update Labels based on mapping selects
+				$("#wp4gf_generic_map tr").each(function() {
+					var key = $(this).find("select[name*=\'key\']").val();
+					var val = $(this).find("select[name*=\'value\'] option:selected").text();
+					if(!val || val == "Select a Field") return;
+
+					if(key == "primary_value") $(".prev-primary").text(val);
+					if(key == "secondary_value") $(".prev-secondary").text(val);
+					if(key == "auxiliary_value") $(".prev-aux").text(val);
+				});
+
+				// QR Code Visibility
+				var qrMsg = $("input[name*=\'wp4gf_barcode_message\']").val();
+				qrMsg ? $(".prev-qr").show() : $(".prev-qr").hide();
+			}
+
+			$(document).on("change", "select[name*=\'wp4gf_generic_map\'], input[name*=\'wp4gf_barcode_message\']", updatePreview);
+			updatePreview();
+		});
+		</script>';
+
 		if ( $echo ) echo $html;
 		return $html;
 	}
@@ -185,9 +225,11 @@ class WP4GF_Addon extends GFAddOn {
 		$received_hash = rgget( 'hash' );
 		$expected_hash = wp_hash( $entry_id . 'wp4gf_secure_download' );
 		if ( ! hash_equals( $expected_hash, $received_hash ) ) wp_die( 'Unauthorized access.', 'Unauthorized', array( 'response' => 403 ) );
+		
 		$entry = GFAPI::get_entry( $entry_id );
 		$form  = GFAPI::get_form( $entry['form_id'] );
 		$pass_data = WP4GF_PKPass_Factory::generate( $entry, $form );
+		
 		header( 'Content-Type: application/vnd.apple.pkpass' );
 		header( 'Content-Disposition: attachment; filename="pass.pkpass"' );
 		echo $pass_data;
