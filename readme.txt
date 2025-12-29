@@ -1,6 +1,6 @@
 === Wallet Pass Generator for Gravity Forms ===
 Contributors: sflwa
-Stable tag: 1.4.3
+Stable tag: 1.4.4
 Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 7.4
