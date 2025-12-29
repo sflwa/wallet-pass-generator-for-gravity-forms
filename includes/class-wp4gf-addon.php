@@ -1,15 +1,19 @@
 <?php
 /**
  * Main Add-On Class for Wallet Pass Generator.
- * Version: 1.6.6
+ * Version: 1.4.4
  * Prefix: wp4gf | Text Domain: wallet-pass-generator-for-gravity-forms
  */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit; // Exit if accessed directly
+}
 
 GFForms::include_addon_framework();
 
 class WP4GF_Addon extends GFAddOn {
 
-	protected $_version                  = '1.6.6';
+	protected $_version                  = '1.4.4';
 	protected $_min_gravityforms_version = '2.5';
 	protected $_slug                     = 'wallet-pass-generator-for-gravity-forms';
 	protected $_path                     = 'wallet-pass-generator-for-gravity-forms/wallet-pass-generator-for-gravity-forms.php';
@@ -31,11 +35,16 @@ class WP4GF_Addon extends GFAddOn {
 		register_activation_hook( $this->_full_path, array( $this, 'create_secure_upload_folder' ) );
 	}
 
+	/**
+	 * Create a secure folder in the uploads directory for certificates.
+	 */
 	public function create_secure_upload_folder() {
 		$upload_dir = wp_upload_dir();
-		$secure_dir = $upload_dir['basedir'] . '/wp4gf';
+		$secure_dir = $upload_dir['basedir'] . '/wp4gf'; //
 		if ( ! file_exists( $secure_dir ) ) {
 			wp_mkdir_p( $secure_dir );
+			// Protect the directory from directory listing
+			file_put_contents( $secure_dir . '/index.php', '<?php // Silence is golden' );
 		}
 	}
 
@@ -45,29 +54,111 @@ class WP4GF_Addon extends GFAddOn {
 		add_filter( 'gform_replace_merge_tags', array( $this, 'wp4gf_replace_download_link' ), 10, 7 );
 		add_action( 'wp_ajax_wp4gf_download_pass', array( $this, 'wp4gf_handle_pass_download' ) );
 		add_action( 'wp_ajax_nopriv_wp4gf_download_pass', array( $this, 'wp4gf_handle_pass_download' ) );
+		
+		// Correctly enqueue admin scripts for the preview logic
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
 	}
 
+	/**
+	 * Register and enqueue the admin preview script.
+	 */
+	public function enqueue_admin_scripts( $hook ) {
+		if ( strpos( $hook, 'forms_page_gf_settings' ) === false ) {
+			return;
+		}
+
+		wp_enqueue_script( 'wp4gf-admin-preview', plugin_dir_url( __FILE__ ) . '../assets/js/admin-preview.js', array( 'jquery' ), $this->_version, true );
+		
+		wp_localize_script( 'wp4gf-admin-preview', 'wp4gf_vars', array(
+			'site_url'    => home_url( '/' ),
+			'content_dir' => WP_CONTENT_DIR,
+		) );
+	}
+
+	/**
+	 * Define Global Plugin Settings.
+	 */
 	public function plugin_settings_fields() {
 		$p12_path = $this->get_plugin_setting( 'wp4gf_p12_path' );
 		$path_status = '';
 		if ( ! empty( $p12_path ) ) {
 			$path_status = file_exists( $p12_path ) ? 
-				'<div style="color:green; font-weight:bold; margin-top:5px;">✅ File Found.</div>' : 
-				'<div style="color:red; font-weight:bold; margin-top:5px;">❌ ERROR: File NOT found.</div>';
+				'<div style="color:green; font-weight:bold; margin-top:5px;">✅ Certificate Found.</div>' : 
+				'<div style="color:red; font-weight:bold; margin-top:5px;">❌ ERROR: Certificate NOT found.</div>';
 		}
+
 		return array(
 			array(
 				'title'  => esc_html__( 'Apple Certificate Settings', 'wallet-pass-generator-for-gravity-forms' ),
 				'fields' => array(
 					array( 'name' => 'wp4gf_pass_type_id', 'label' => 'Pass Type ID', 'type' => 'text', 'required' => true ),
 					array( 'name' => 'wp4gf_team_id', 'label' => 'Team ID', 'type' => 'text', 'required' => true ),
-					array( 'name' => 'wp4gf_p12_path', 'label' => 'Absolute Path to .p12', 'type' => 'text', 'class' => 'large', 'description' => 'Root: ' . ABSPATH . '<br>' . $path_status ),
+					array( 
+						'name'  => 'wp4gf_p12_upload', 
+						'label' => 'Upload .p12 Certificate', 
+						'type'  => 'file_upload', 
+						'description' => 'Upload your exported Apple Certificate (.p12) here.' 
+					),
+					array( 
+						'name'     => 'wp4gf_p12_path', 
+						'label'    => 'Current Certificate Path', 
+						'type'     => 'text', 
+						'class'    => 'large', 
+						'readonly' => true,
+						'description' => wp_kses_post( $path_status ) 
+					),
 					array( 'name' => 'wp4gf_p12_password', 'label' => 'Cert Password', 'type' => 'text', 'input_type' => 'password' ),
+					array(
+						'name'  => 'wp4gf_wwdr_info',
+						'label' => 'WWDR Certificate Instruction',
+						'type'  => 'html',
+						'html'  => sprintf(
+							'<p>%s <a href="https://www.apple.com/certificateauthority/" target="_blank" rel="noopener">%s</a>. %s</p>',
+							esc_html__( 'Download the "Worldwide Developer Relations - G4" certificate from the', 'wallet-pass-generator-for-gravity-forms' ),
+							esc_html__( 'Apple Certificate Authority site', 'wallet-pass-generator-for-gravity-forms' ),
+							esc_html__( 'This is required for signing your passes.', 'wallet-pass-generator-for-gravity-forms' )
+						)
+					),
 				),
 			),
 		);
 	}
 
+	/**
+	 * Custom renderer for the file upload field in global settings.
+	 */
+	public function settings_file_upload( $field, $echo = true ) {
+		$html = sprintf(
+			'<input type="file" name="%s" id="%s" accept=".p12" />',
+			esc_attr( $field['name'] ),
+			esc_attr( $field['name'] )
+		);
+		if ( $echo ) {
+			echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		}
+		return $html;
+	}
+
+	/**
+	 * Process the file upload when global settings are saved.
+	 */
+	public function plugin_settings_save( $settings ) {
+		if ( ! empty( $_FILES['wp4gf_p12_upload']['name'] ) ) {
+			$upload_dir = wp_upload_dir();
+			$target_dir = $upload_dir['basedir'] . '/wp4gf/';
+			$file_name  = sanitize_file_name( $_FILES['wp4gf_p12_upload']['name'] );
+			$target_path = $target_dir . $file_name;
+
+			if ( move_uploaded_file( $_FILES['wp4gf_p12_upload']['tmp_name'], $target_path ) ) {
+				$settings['wp4gf_p12_path'] = $target_path;
+			}
+		}
+		return parent::plugin_settings_save( $settings );
+	}
+
+	/**
+	 * Define Form-Specific Settings.
+	 */
 	public function form_settings_fields( $form ) {
 		return array(
 			array(
@@ -122,10 +213,11 @@ class WP4GF_Addon extends GFAddOn {
 		);
 	}
 
+	/**
+	 * Renders the HTML for the pass preview in form settings.
+	 */
 	public function settings_pass_preview( $field, $echo = true ) {
 		$assets_url = plugin_dir_url( dirname( __FILE__ ) ) . 'assets/';
-		$site_url = home_url('/');
-		$abs_path = ABSPATH;
 		$html = '
 		<div id="wp4gf-pass-preview" style="background:#f3f3f3; width:320px; border:1px solid #ccc; border-radius:15px; padding:20px; font-family:-apple-system, sans-serif; color:#000;">
 			<div style="background:#fff; border-radius:10px; padding:15px; box-shadow:0 4px 10px rgba(0,0,0,0.1); position:relative; min-height: 250px;">
@@ -148,40 +240,9 @@ class WP4GF_Addon extends GFAddOn {
 					<div style="font-size:9px; font-weight:bold; margin-top:25px;">QR CODE</div>
 				</div>
 			</div>
-		</div>
-		<script>
-		jQuery(document).ready(function($) {
-			function update() {
-				const siteUrl = "' . esc_url( $site_url ) . '";
-				const absPath = "' . esc_js( $abs_path ) . '";
-				var logo = $("input[name*=\'wp4gf_logo_path\']").val();
-				if(logo) $(".prev-logo-img").attr("src", logo.replace(absPath, siteUrl));
-
-				let qrActive = $("input[name*=\'wp4gf_barcode_message\']").val().length > 0;
-
-				["primary", "secondary", "auxiliary"].forEach(f => {
-					let lbl = $("input[name*=\'wp4gf_lbl_" + f + "\']").val();
-					let src = $("input[name*=\'wp4gf_src_" + f + "\']:checked").val();
-					let val = src === "custom" ? $("input[name*=\'wp4gf_txt_" + f + "\']").val() : $("select[name*=\'wp4gf_val_" + f + "\'] option:selected").text();
-					
-					$(".prev-lbl-" + f).text(lbl || f.toUpperCase());
-					$(".prev-val-" + f).text(val || "Value");
-					
-					if (f === "auxiliary" && qrActive) {
-						$(".prev-box-auxiliary").hide();
-					} else {
-						(lbl || (val && val !== "Select a field")) ? $(".prev-box-" + f).show() : (f !== "primary" ? $(".prev-box-" + f).hide() : null);
-					}
-				});
-				qrActive ? $(".prev-qr").show() : $(".prev-qr").hide();
-			}
-			$(document).on("change keyup", "input, select, textarea", update);
-			update();
-		});
-		</script>';
+		</div>';
 		if ( $echo ) {
-			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-			echo $html; 
+			echo wp_kses_post( $html ); //
 		}
 		return $html;
 	}
@@ -199,37 +260,46 @@ class WP4GF_Addon extends GFAddOn {
 		}
 		$hash = wp_hash( $entry['id'] . 'wp4gf_secure_download' );
 		$url  = add_query_arg( array( 'action' => 'wp4gf_download_pass', 'entry_id' => $entry['id'], 'hash' => $hash ), admin_url( 'admin-ajax.php' ) );
-		return str_replace( '{wp4gf_download_link}', sprintf( '<a href="%s" class="wp4gf-btn" style="background:#000; color:#fff; padding:10px 20px; text-decoration:none; border-radius:5px;">Download Pass</a>', esc_url( $url ) ), $text );
+		$link = sprintf( '<a href="%s" class="wp4gf-btn" style="background:#000; color:#fff; padding:10px 20px; text-decoration:none; border-radius:5px;">Download Pass</a>', esc_url( $url ) );
+		return str_replace( '{wp4gf_download_link}', $link, $text );
 	}
 
+	/**
+	 * AJAX Handler for secure pass downloads.
+	 */
 	public function wp4gf_handle_pass_download() {
 		header( 'Cache-Control: no-cache, must-revalidate, max-age=0' );
 		header( 'Pragma: no-cache' );
 		
 		$entry_id = rgget( 'entry_id' );
-		if ( ! hash_equals( wp_hash( $entry_id . 'wp4gf_secure_download' ), rgget( 'hash' ) ) ) wp_die( 'Unauthorized.' );
+		if ( ! hash_equals( wp_hash( $entry_id . 'wp4gf_secure_download' ), rgget( 'hash' ) ) ) {
+			wp_die( esc_html__( 'Unauthorized.', 'wallet-pass-generator-for-gravity-forms' ) );
+		}
 		
 		$entry = GFAPI::get_entry( $entry_id );
 		$form  = GFAPI::get_form( $entry['form_id'] );
 		$form_settings = $this->get_form_settings( $form );
 		
 		if ( rgar( $form_settings, 'wp4gf_enabled' ) !== '1' ) {
-			wp_die( '<h3>Access Denied</h3><p>Wallet Pass generation is currently disabled for this form.</p>' );
+			wp_die( wp_kses_post( '<h3>Access Denied</h3><p>Wallet Pass generation is currently disabled for this form.</p>' ) );
 		}
 
 		try {
 			$pass_data = WP4GF_PKPass_Factory::generate( $entry, $form );
 
-			// NEW: Add a note to the entry instead of updating a column
 			GFAPI::add_note( $entry['id'], 0, 'Wallet Pass', 'Apple Wallet Pass was generated/downloaded.' );
 
 			header( 'Content-Type: application/vnd.apple.pkpass' );
 			header( 'Content-Disposition: attachment; filename="pass.pkpass"' );
-			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-			echo $pass_data;
+			
+			/**
+			 * We cannot escape the binary pass data because it would corrupt the Apple Wallet file structure.
+			 * The data is generated internally through WP4GF_PKPass_Factory using secure libraries.
+			 */
+			echo $pass_data; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			exit;
 		} catch ( Exception $e ) {
-			wp_die( sprintf( '<h3>Wallet Pass Error</h3><p>%s</p>', esc_html( $e->getMessage() ) ) );
+			wp_die( sprintf( wp_kses_post( '<h3>Wallet Pass Error</h3><p>%s</p>' ), esc_html( $e->getMessage() ) ) );
 		}
 	}
 }
