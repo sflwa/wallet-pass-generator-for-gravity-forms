@@ -1,12 +1,15 @@
 <?php
 /**
  * Modified PKPass Library for WordPress Standards.
+ * Version: 1.4.4
  * Prefix: WP4GF | Namespace: WP4GF\PKPass
  */
 
-// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedNamespaceFound
 namespace WP4GF\PKPass; 
-// phpcs:enable
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit; // Exit if accessed directly
+}
 
 use ZipArchive;
 
@@ -31,7 +34,6 @@ class PKPass {
 
     public function addFile($path, $name = null) {
         if (!file_exists($path)) {
-            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
             throw new \Exception(sprintf('File %s does not exist.', esc_html($path)));
         }
         $name = $name ?: basename($path);
@@ -60,7 +62,6 @@ class PKPass {
         $pkcs12 = file_get_contents($this->certPath);
         $certs = [];
         if (!openssl_pkcs12_read($pkcs12, $certs, $this->certPass)) {
-            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
             throw new \Exception('Could not read certificate. Check path and password.');
         }
 
@@ -70,6 +71,8 @@ class PKPass {
         openssl_pkcs7_sign($manifest_path, $signature_path, $certdata, $privkey, [], PKCS7_BINARY | PKCS7_DETACHED);
 
         $signature = file_get_contents($signature_path);
+        
+        // Use WordPress specific file deletion for security
         wp_delete_file($manifest_path);
         wp_delete_file($signature_path);
 
@@ -87,7 +90,6 @@ class PKPass {
         $zip = new ZipArchive();
         $filename = tempnam($this->tempPath, 'pkpass');
         if (!$zip->open($filename, ZipArchive::OVERWRITE)) {
-            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
             throw new \Exception('Could not open ' . esc_html(basename($filename)) . ' with ZipArchive.');
         }
 
@@ -98,7 +100,7 @@ class PKPass {
         $zip->close();
 
         $content = file_get_contents($filename);
-        wp_delete_file($filename);
+        wp_delete_file($filename); // Use WordPress specific file deletion
         return $content;
     }
 }
