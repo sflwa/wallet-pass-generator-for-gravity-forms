@@ -1,22 +1,43 @@
 <?php
+/**
+ * PKPass Factory for Wallet Pass Generator.
+ * Version: 1.4.4
+ * Prefix: wp4gf | Text Domain: wallet-pass-generator-for-gravity-forms
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit; // Exit if accessed directly
+}
+
 class WP4GF_PKPass_Factory {
 
+	/**
+	 * Generate the Apple Wallet Pass binary data.
+	 *
+	 * @param array $entry The Gravity Forms entry object.
+	 * @param array $form  The Gravity Forms form object.
+	 * @throws Exception   If certificate is missing or OpenSSL fails.
+	 * @return string      The binary content of the .pkpass file.
+	 */
 	public static function generate( $entry, $form ) {
 		$addon         = WP4GF_Addon::get_instance();
 		$settings      = $addon->get_plugin_settings();
 		$form_settings = $addon->get_form_settings( $form );
 
+		// Retrieve the path saved during the upload process in global settings
 		$p12_path     = rgar( $settings, 'wp4gf_p12_path' );
 		$p12_password = rgar( $settings, 'wp4gf_p12_password' );
 
-		if ( ! file_exists( $p12_path ) ) throw new Exception( 'Certificate file not found.' );
+		if ( empty( $p12_path ) || ! file_exists( $p12_path ) ) {
+			throw new Exception( esc_html__( 'Apple .p12 Certificate not found. Please upload it in the Wallet Pass global settings.', 'wallet-pass-generator-for-gravity-forms' ) );
+		}
 
 		$certs = array();
 		if ( ! openssl_pkcs12_read( file_get_contents( $p12_path ), $certs, $p12_password ) ) {
-			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 			throw new Exception( 'OpenSSL Error: ' . openssl_error_string() );
 		}
 
+		// Include the library using plugin_dir_path for cross-platform compatibility
 		require_once( plugin_dir_path( __FILE__ ) . '../lib/PHP-PKPass/PKPass.php' );
 		$pass = new \WP4GF\PKPass\PKPass( $p12_path, $p12_password );
 
@@ -75,7 +96,6 @@ class WP4GF_PKPass_Factory {
 
 		$barcode_msg = GFCommon::replace_variables( rgar( $form_settings, 'wp4gf_barcode_message' ), $form, $entry );
 		if ( ! empty( $barcode_msg ) ) {
-			// BACK TO SQUARE QR
 			$json_data['barcodes'] = array( array( 
 				'format' => 'PKBarcodeFormatQR', 
 				'message' => (string)$barcode_msg, 
@@ -87,10 +107,28 @@ class WP4GF_PKPass_Factory {
 		return $pass->create();
 	}
 
+	/**
+	 * Resolves a URL to a local server path for image inclusion.
+	 *
+	 * @param string $url      The image URL from settings.
+	 * @param string $fallback The local fallback path.
+	 * @return string          The resolved local file path.
+	 */
 	private static function resolve_image_path( $url, $fallback ) {
-		if ( empty( $url ) ) return $fallback;
-		$path = str_replace( content_url(), WP_CONTENT_DIR, $url );
-		if ( ! file_exists( $path ) ) $path = ABSPATH . str_replace( home_url( '/' ), '', $url );
+		if ( empty( $url ) ) {
+			return $fallback;
+		}
+		
+		$upload_dir = wp_upload_dir();
+		
+		// Convert URL to local path based on the WordPress uploads directory
+		$path = str_replace( $upload_dir['baseurl'], $upload_dir['basedir'], $url );
+		
+		// If the replacement didn't work or file doesn't exist, try manual resolution
+		if ( ! file_exists( $path ) ) {
+			$path = trailingslashit( ABSPATH ) . str_replace( home_url( '/' ), '', $url );
+		}
+		
 		return file_exists( $path ) ? $path : $fallback;
 	}
 }
